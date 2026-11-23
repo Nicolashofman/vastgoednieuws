@@ -36,12 +36,13 @@
   .samen { margin-top:6px; font-size:14.5px; color:var(--zacht); }
   a.art.regio { border-left:4px solid var(--accent); }
   .regiotag { background:var(--accent); color:#fff; font-size:11px; font-weight:700; padding:1px 8px; border-radius:99px; }
+  .wettag { background:#6d4aa8; color:#fff; font-size:11px; font-weight:700; padding:1px 8px; border-radius:99px; }
   h2.regiokop { color:var(--accent); font-size:14px; margin-top:20px; }
   @media (max-width:600px) {
     header { padding:max(20px, env(safe-area-inset-top)) 16px 4px; }
     h1 { font-size:24px; }
     .bediening, main { padding-left:16px; padding-right:16px; }
-    .chip { flex:1; padding:8px 14px; }
+    .chip { flex:1; padding:8px 10px; font-size:12.5px; }
     input[type=search] { font-size:16px; }
     .titel { font-size:16px; }
   }
@@ -61,7 +62,7 @@
 <script>
 const DATA = __DATA__;
 const gelezen = new Set(JSON.parse(localStorage.getItem('gelezen') || '[]'));
-let sorteer = localStorage.getItem('sorteer') === 'datum' ? 'datum' : 'regio';
+let sorteer = ['datum', 'wet'].includes(localStorage.getItem('sorteer')) ? localStorage.getItem('sorteer') : 'regio';
 const nu = Date.now();
 const fmtTijd = new Intl.DateTimeFormat('nl-BE', { hour:'2-digit', minute:'2-digit' });
 const fmtDag = new Intl.DateTimeFormat('nl-BE', { weekday:'long', day:'numeric', month:'long' });
@@ -71,7 +72,7 @@ const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','
 function chips() {
   const el = document.getElementById('chips');
   el.innerHTML = '';
-  [['regio', '📍 Kortrijk eerst'], ['datum', '🕒 Nieuwste eerst']].forEach(([sleutel, label]) => {
+  [['regio', '📍 Kortrijk eerst'], ['datum', '🕒 Nieuwste eerst'], ['wet', '⚖️ Regelgeving BE (' + DATA.filter(a => a.wet).length + ')']].forEach(([sleutel, label]) => {
     const b = document.createElement('button');
     b.className = 'chip' + (sorteer === sleutel ? ' aan' : '');
     b.textContent = label;
@@ -92,12 +93,12 @@ function teken() {
     const d = new Date(a.datum), nieuw = nu - d < 6 * 36e5;
     return '<a class="art' + (a.regio ? ' regio' : '') + (gelezen.has(a.link) ? ' gelezen' : '') + '" href="' + esc(a.link) + '" target="_blank" rel="noopener" data-l="' + esc(a.link) + '">' +
       '<div class="titel">' + esc(a.titel) + '</div>' +
-      '<div class="meta">' + (nieuw ? '<span class="nieuw">NIEUW</span>' : '') + (a.regio ? '<span class="regiotag">Kortrijk e.o.</span>' : '') +
+      '<div class="meta">' + (nieuw ? '<span class="nieuw">NIEUW</span>' : '') + (a.regio ? '<span class="regiotag">Kortrijk e.o.</span>' : '') + (a.wet ? '<span class="wettag">Regelgeving</span>' : '') +
       '<span class="bron">' + esc(a.bron) + '</span><span>' + (metDatum ? fmtKort.format(d) : fmtTijd.format(d)) + '</span></div>' +
       (a.samenvatting ? '<div class="samen">' + esc(a.samenvatting) + '</div>' : '') + '</a>';
   };
   const regioRij = sorteer === 'regio' ? rij.filter(a => a.regio) : [];
-  const rest = sorteer === 'regio' ? rij.filter(a => !a.regio) : rij;
+  const rest = sorteer === 'regio' ? rij.filter(a => !a.regio) : sorteer === 'wet' ? rij.filter(a => a.wet) : rij;
   if (regioRij.length) html += '<h2 class="regiokop">📍 Kortrijk en omstreken (' + regioRij.length + ')</h2>' + regioRij.map(a => kaart(a, true)).join('');
   if (regioRij.length && rest.length) html += '<h2 class="regiokop" style="color:var(--zacht)">Overig vastgoednieuws</h2>';
   const vandaag = dagSleutel(new Date()), gisteren = dagSleutel(new Date(nu - 864e5));
@@ -110,7 +111,7 @@ function teken() {
     }
     html += kaart(a, false);
   }
-  doel.innerHTML = html;
+  doel.innerHTML = html || '<div class="leeg">Geen artikels gevonden.</div>';
 }
 
 document.getElementById('lijst').addEventListener('click', e => {
