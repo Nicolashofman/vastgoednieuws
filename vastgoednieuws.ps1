@@ -1,4 +1,4 @@
-﻿# Vastgoednieuws: haalt recente artikels op uit RSS-feeds en maakt er één overzichtspagina van.
+# Vastgoednieuws: haalt recente artikels op uit RSS-feeds en maakt er één overzichtspagina van.
 # Gebruik: rechtsklik > "Met PowerShell uitvoeren", of dubbelklik op Vastgoednieuws.bat
 param([int]$Dagen = 7, [switch]$GeenBrowser)
 
@@ -19,11 +19,20 @@ $bronnen = @(
     # --- Regio Kortrijk: regionale kranten en stad (algemeen nieuws, daarom gefilterd op vastgoedwoorden) ---
     @{ naam = 'Krant van West-Vlaanderen'; url = 'https://www.kw.be/rss'; filter = $true },
     @{ naam = 'HLN Kortrijk'; url = 'https://www.hln.be/kortrijk/rss.xml'; filter = $true; forceregio = $true },
-    @{ naam = 'Stad Kortrijk'; url = 'https://www.kortrijk.be/rss.xml'; filter = $true; forceregio = $true }
+    @{ naam = 'Stad Kortrijk'; url = 'https://www.kortrijk.be/rss.xml'; filter = $true; forceregio = $true },
+    # --- Regelgeving en beleid rond vastgoed in België ---
+    @{ naam = 'Google News (woonbeleid)'; url = 'https://news.google.com/rss/search?q=woonbeleid%20Vlaanderen%20nieuwe%20regels%20woningen%20when%3A14d&hl=nl&gl=BE&ceid=BE:nl'; google = $true; filter = $true; forcewet = $true },
+    @{ naam = 'Google News (Depraetere)'; url = 'https://news.google.com/rss/search?q=Depraetere%20(woningen%20OR%20huurders%20OR%20renovatieverplichting%20OR%20huurwet%20OR%20sociale%20huur%20OR%20bouwgronden)%20when%3A14d&hl=nl&gl=BE&ceid=BE:nl'; google = $true; filter = $true; forcewet = $true },
+    @{ naam = 'Google News (fiscaal)'; url = 'https://news.google.com/rss/search?q=(huurwet%20OR%20registratierechten%20OR%20woonbonus%20OR%20vastgoedfiscaliteit%20OR%20onroerende%20voorheffing%20OR%20schenkbelasting%20OR%20meerwaardebelasting%20vastgoed)%20Belgi%C3%AB%20when%3A14d&hl=nl&gl=BE&ceid=BE:nl'; google = $true; filter = $true; forcewet = $true },
+    @{ naam = 'HLN'; url = 'https://www.hln.be/home/rss.xml'; wetfeed = $true },
+    @{ naam = 'De Morgen'; url = 'https://www.demorgen.be/rss.xml'; wetfeed = $true },
+    @{ naam = 'VRT NWS'; url = 'https://www.vrt.be/vrtnws/nl.rss.articles.xml'; wetfeed = $true },
+    @{ naam = 'De Tijd'; url = 'https://www.tijd.be/rss/nieuws.xml'; wetfeed = $true },
+    @{ naam = 'Bruzz'; url = 'https://www.bruzz.be/rss.xml'; wetfeed = $true }
 )
 
 # Woorden die een artikel vastgoed-gerelateerd maken (enkel gebruikt voor de algemene regionale feeds)
-$vastgoedWoorden = 'vastgoed|woning|woningen|appartement|verkaveling|bouwgrond|bouwproject|bouwvergunning|omgevingsvergunning|renovatie|projectontwikkel|immo|huurder|verhuur|koopwoning|sociale woningen|leegstand|stadsontwikkeling|herbestemming|woonproject|woonwijk|woonzorg|kantoorgebouw|bedrijfsgebouw|winkelpand|nieuwbouw|ruimtelijk|masterplan|wooncomplex|sloop|site '
+$vastgoedWoorden = 'vastgoed|huur|onroerend|woonbeleid|woningmarkt|eigenaar|woning|woningen|appartement|verkaveling|bouwgrond|bouwproject|bouwvergunning|omgevingsvergunning|renovatie|projectontwikkel|immo|huurder|verhuur|koopwoning|sociale woningen|leegstand|stadsontwikkeling|herbestemming|woonproject|woonwijk|woonzorg|kantoorgebouw|bedrijfsgebouw|winkelpand|nieuwbouw|ruimtelijk|masterplan|wooncomplex|sloop|site '
 # Plaatsen die als "jouw regio" tellen
 $regioWoorden = '\b(Kortrijk|Courtrai|Kuurne|Harelbeke|Wevelgem|Menen|Izegem|Waregem|Zwevegem|Anzegem|Deerlijk|Avelgem|Lendelede|Heule|Bissegem|Rollegem|Aalbeke|Wielsbeke|Ingelmunster|Lauwe|Bavikhove|Hulste|Kooigem|Bellegem|Vichte|Leiestreek|Zuid-West-Vlaanderen|Kortrijk Xpo)\b'
 
@@ -32,6 +41,10 @@ function Get-Tekst($s) {
     $t = [System.Net.WebUtility]::HtmlDecode(($s -replace '<[^>]+>', ' '))
     return (($t -replace '\s+', ' ').Trim())
 }
+
+# Regelgeving/beleid: woorden die daarop wijzen, en woorden die het Belgisch maken
+$wetWoorden = 'regelgeving|wetgeving|decreet|reglement|registratierecht|woonbonus|belasting|fiscal|btw|huurwet|huurindex|huurregel|epc|renovatieverplicht|omgevingsvergunning|bouwshift|betonstop|wooncode|subsidie|premie|hervorming|wetsontwerp|stedenbouw|woonzekerheid|nieuwe regels|verplichting|verbod|maatregel'
+$belgieWoorden = 'Belgi|Belg|Vlaams|Vlaanderen|Brussel|Walloni|federaal|federale|Vlaamse regering|De Wever|Diependaele|Vandenbroucke'
 
 function Get-Node($n) {
     # Een XML-element zonder attributen komt als string binnen, anders als element
@@ -75,11 +88,14 @@ foreach ($b in $bronnen) {
             }
             try { $d = [DateTimeOffset]::Parse($datum, [Globalization.CultureInfo]::InvariantCulture) } catch { continue }
             if ($d -lt $grens -or -not $link -or -not $titel) { continue }
-            if ($b.filter -and ("$titel $samenvatting" -notmatch $vastgoedWoorden)) { continue }
+            if ($b.filter -and ("$titel $samenvatting" -notmatch "$vastgoedWoorden|$wetWoorden")) { continue }
+            $tekst = "$titel $samenvatting"
+            if ($b.wetfeed -and -not (($tekst -match $vastgoedWoorden) -and ($tekst -match $wetWoorden))) { continue }
+            $isWet = [bool]($b.forcewet -or $b.wetfeed -or (($tekst -match $wetWoorden) -and ($tekst -match $belgieWoorden) -and ($tekst -match $vastgoedWoorden)))
             $isRegio = [bool]("$titel $samenvatting" -match $regioWoorden)
             if ($b.forceregio) { $isRegio = $true }   # bron gaat uitsluitend over Kortrijk
             if ($samenvatting.Length -gt 280) { $samenvatting = $samenvatting.Substring(0, 280).TrimEnd() + '…' }
-            [void]$artikels.Add([pscustomobject]@{ titel = $titel; link = $link; datum = $d.UtcDateTime.ToString('o'); bron = $bron; samenvatting = $samenvatting; regio = $isRegio })
+            [void]$artikels.Add([pscustomobject]@{ titel = $titel; link = $link; datum = $d.UtcDateTime.ToString('o'); bron = $bron; samenvatting = $samenvatting; regio = $isRegio; wet = $isWet })
             $n++
         }
         $status += "OK    $($b.naam): $n artikels"
@@ -91,7 +107,7 @@ foreach ($b in $bronnen) {
 # Dubbels weg (zelfde titel), nieuwste eerst
 $gezien = @{}
 # Bij dubbels blijft de regio-versie behouden
-$uniek = $artikels | Sort-Object @{ Expression = { $_.regio }; Descending = $true }, @{ Expression = { [datetime]$_.datum }; Descending = $true } | Where-Object {
+$uniek = $artikels | Sort-Object @{ Expression = { [bool]($_.regio -or $_.wet) }; Descending = $true }, @{ Expression = { [datetime]$_.datum }; Descending = $true } | Where-Object {
     $k = ($_.titel.ToLower() -replace '[^a-z0-9]', '')
     if ($gezien.ContainsKey($k)) { $false } else { $gezien[$k] = 1; $true }
 } | Sort-Object { [datetime]$_.datum } -Descending
