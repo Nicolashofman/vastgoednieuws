@@ -41,8 +41,7 @@
     header { padding:max(20px, env(safe-area-inset-top)) 16px 4px; }
     h1 { font-size:24px; }
     .bediening, main { padding-left:16px; padding-right:16px; }
-    .chips { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
-    .chip { white-space:nowrap; flex:0 0 auto; padding:7px 14px; }
+    .chip { flex:1; padding:8px 14px; }
     input[type=search] { font-size:16px; }
     .titel { font-size:16px; }
   }
@@ -62,7 +61,7 @@
 <script>
 const DATA = __DATA__;
 const gelezen = new Set(JSON.parse(localStorage.getItem('gelezen') || '[]'));
-let bronFilter = null;
+let sorteer = localStorage.getItem('sorteer') === 'datum' ? 'datum' : 'regio';
 const nu = Date.now();
 const fmtTijd = new Intl.DateTimeFormat('nl-BE', { hour:'2-digit', minute:'2-digit' });
 const fmtDag = new Intl.DateTimeFormat('nl-BE', { weekday:'long', day:'numeric', month:'long' });
@@ -70,26 +69,20 @@ const dagSleutel = d => d.toLocaleDateString('nl-BE');
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function chips() {
-  const tel = {};
-  DATA.forEach(a => tel[a.bron] = (tel[a.bron] || 0) + 1);
-  const bronnen = Object.entries(tel).sort((a, b) => b[1] - a[1]);
   const el = document.getElementById('chips');
   el.innerHTML = '';
-  const maak = (naam, label) => {
+  [['regio', '📍 Kortrijk eerst'], ['datum', '🕒 Nieuwste eerst']].forEach(([sleutel, label]) => {
     const b = document.createElement('button');
-    b.className = 'chip' + (bronFilter === naam ? ' aan' : '');
+    b.className = 'chip' + (sorteer === sleutel ? ' aan' : '');
     b.textContent = label;
-    b.onclick = () => { bronFilter = naam; chips(); teken(); };
+    b.onclick = () => { sorteer = sleutel; localStorage.setItem('sorteer', sleutel); chips(); teken(); };
     el.appendChild(b);
-  };
-  maak(null, 'Alle (' + DATA.length + ')');
-  bronnen.forEach(([n, c]) => maak(n, n + ' (' + c + ')'));
+  });
 }
 
 function teken() {
   const q = document.getElementById('zoek').value.trim().toLowerCase();
-  const rij = DATA.filter(a => (!bronFilter || a.bron === bronFilter) &&
-    (!q || (a.titel + ' ' + a.samenvatting + ' ' + a.bron).toLowerCase().includes(q)));
+  const rij = DATA.filter(a => !q || (a.titel + ' ' + a.samenvatting + ' ' + a.bron).toLowerCase().includes(q));
   document.getElementById('teller').textContent = rij.length + ' artikels';
   const doel = document.getElementById('lijst');
   if (!rij.length) { doel.innerHTML = '<div class="leeg">Geen artikels gevonden.</div>'; return; }
@@ -103,7 +96,8 @@ function teken() {
       '<span class="bron">' + esc(a.bron) + '</span><span>' + (metDatum ? fmtKort.format(d) : fmtTijd.format(d)) + '</span></div>' +
       (a.samenvatting ? '<div class="samen">' + esc(a.samenvatting) + '</div>' : '') + '</a>';
   };
-  const regioRij = rij.filter(a => a.regio), rest = rij.filter(a => !a.regio);
+  const regioRij = sorteer === 'regio' ? rij.filter(a => a.regio) : [];
+  const rest = sorteer === 'regio' ? rij.filter(a => !a.regio) : rij;
   if (regioRij.length) html += '<h2 class="regiokop">📍 Kortrijk en omstreken (' + regioRij.length + ')</h2>' + regioRij.map(a => kaart(a, true)).join('');
   if (regioRij.length && rest.length) html += '<h2 class="regiokop" style="color:var(--zacht)">Overig vastgoednieuws</h2>';
   const vandaag = dagSleutel(new Date()), gisteren = dagSleutel(new Date(nu - 864e5));
