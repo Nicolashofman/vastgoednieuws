@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="1800">
+<meta name="theme-color" content="#1d5c4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vastgoed">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Vastgoednieuws</title>
+<style>
+  :root { --bg:#f6f5f2; --kaart:#fff; --tekst:#1c1c1a; --zacht:#6b6b66; --lijn:#e4e2dc; --accent:#1d5c4a; --nieuw:#c2410c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161715; --kaart:#1f201e; --tekst:#ecebe6; --zacht:#9a9a92; --lijn:#2e2f2c; --accent:#5fc3a5; --nieuw:#fb923c; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--tekst); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { max-width:820px; margin:0 auto; padding:32px 20px 8px; }
+  h1 { margin:0; font-size:28px; letter-spacing:-.02em; }
+  .sub { color:var(--zacht); font-size:14px; margin-top:4px; }
+  .bediening { max-width:820px; margin:0 auto; padding:12px 20px; position:sticky; top:0; background:var(--bg); z-index:2; border-bottom:1px solid var(--lijn); }
+  input[type=search] { width:100%; padding:10px 14px; border:1px solid var(--lijn); border-radius:10px; background:var(--kaart); color:var(--tekst); font-size:15px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chip { border:1px solid var(--lijn); background:var(--kaart); color:var(--tekst); padding:4px 12px; border-radius:99px; font-size:13px; cursor:pointer; }
+  .chip.aan { background:var(--accent); border-color:var(--accent); color:#fff; }
+  main { max-width:820px; margin:0 auto; padding:8px 20px 60px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--zacht); margin:28px 0 8px; font-weight:600; }
+  a.art { display:block; background:var(--kaart); border:1px solid var(--lijn); border-radius:12px; padding:14px 16px; margin-bottom:10px; text-decoration:none; color:inherit; }
+  a.art:hover { border-color:var(--accent); }
+  a.art.gelezen .titel { color:var(--zacht); font-weight:500; }
+  .titel { font-weight:650; font-size:17px; line-height:1.35; }
+  .meta { font-size:13px; color:var(--zacht); margin-top:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .nieuw { color:var(--nieuw); font-weight:700; font-size:11px; letter-spacing:.06em; }
+  .bron { color:var(--accent); font-weight:600; }
+  .samen { margin-top:6px; font-size:14.5px; color:var(--zacht); }
+  a.art.regio { border-left:4px solid var(--accent); }
+  .regiotag { background:var(--accent); color:#fff; font-size:11px; font-weight:700; padding:1px 8px; border-radius:99px; }
+  h2.regiokop { color:var(--accent); font-size:14px; margin-top:20px; }
+  @media (max-width:600px) {
+    header { padding:max(20px, env(safe-area-inset-top)) 16px 4px; }
+    h1 { font-size:24px; }
+    .bediening, main { padding-left:16px; padding-right:16px; }
+    .chips { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
+    .chip { white-space:nowrap; flex:0 0 auto; padding:7px 14px; }
+    input[type=search] { font-size:16px; }
+    .titel { font-size:16px; }
+  }
+  .leeg { text-align:center; color:var(--zacht); padding:40px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Vastgoednieuws</h1>
+  <div class="sub"><span id="teller"></span> · bijgewerkt op __BIJGEWERKT__</div>
+</header>
+<div class="bediening">
+  <input type="search" id="zoek" placeholder="Zoek in titels en samenvattingen…" autocomplete="off">
+  <div class="chips" id="chips"></div>
+</div>
+<main id="lijst"></main>
+<script>
+const DATA = __DATA__;
+const gelezen = new Set(JSON.parse(localStorage.getItem('gelezen') || '[]'));
+let bronFilter = null;
+const nu = Date.now();
+const fmtTijd = new Intl.DateTimeFormat('nl-BE', { hour:'2-digit', minute:'2-digit' });
+const fmtDag = new Intl.DateTimeFormat('nl-BE', { weekday:'long', day:'numeric', month:'long' });
+const dagSleutel = d => d.toLocaleDateString('nl-BE');
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function chips() {
+  const tel = {};
+  DATA.forEach(a => tel[a.bron] = (tel[a.bron] || 0) + 1);
+  const bronnen = Object.entries(tel).sort((a, b) => b[1] - a[1]);
+  const el = document.getElementById('chips');
+  el.innerHTML = '';
+  const maak = (naam, label) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (bronFilter === naam ? ' aan' : '');
+    b.textContent = label;
+    b.onclick = () => { bronFilter = naam; chips(); teken(); };
+    el.appendChild(b);
+  };
+  maak(null, 'Alle (' + DATA.length + ')');
+  bronnen.forEach(([n, c]) => maak(n, n + ' (' + c + ')'));
+}
+
+function teken() {
+  const q = document.getElementById('zoek').value.trim().toLowerCase();
+  const rij = DATA.filter(a => (!bronFilter || a.bron === bronFilter) &&
+    (!q || (a.titel + ' ' + a.samenvatting + ' ' + a.bron).toLowerCase().includes(q)));
+  document.getElementById('teller').textContent = rij.length + ' artikels';
+  const doel = document.getElementById('lijst');
+  if (!rij.length) { doel.innerHTML = '<div class="leeg">Geen artikels gevonden.</div>'; return; }
+  let html = '', laatste = '';
+  const fmtKort = new Intl.DateTimeFormat('nl-BE', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  const kaart = (a, metDatum) => {
+    const d = new Date(a.datum), nieuw = nu - d < 6 * 36e5;
+    return '<a class="art' + (a.regio ? ' regio' : '') + (gelezen.has(a.link) ? ' gelezen' : '') + '" href="' + esc(a.link) + '" target="_blank" rel="noopener" data-l="' + esc(a.link) + '">' +
+      '<div class="titel">' + esc(a.titel) + '</div>' +
+      '<div class="meta">' + (nieuw ? '<span class="nieuw">NIEUW</span>' : '') + (a.regio ? '<span class="regiotag">Kortrijk e.o.</span>' : '') +
+      '<span class="bron">' + esc(a.bron) + '</span><span>' + (metDatum ? fmtKort.format(d) : fmtTijd.format(d)) + '</span></div>' +
+      (a.samenvatting ? '<div class="samen">' + esc(a.samenvatting) + '</div>' : '') + '</a>';
+  };
+  const regioRij = rij.filter(a => a.regio), rest = rij.filter(a => !a.regio);
+  if (regioRij.length) html += '<h2 class="regiokop">📍 Kortrijk en omstreken (' + regioRij.length + ')</h2>' + regioRij.map(a => kaart(a, true)).join('');
+  if (regioRij.length && rest.length) html += '<h2 class="regiokop" style="color:var(--zacht)">Overig vastgoednieuws</h2>';
+  const vandaag = dagSleutel(new Date()), gisteren = dagSleutel(new Date(nu - 864e5));
+  for (const a of rest) {
+    const d = new Date(a.datum), k = dagSleutel(d);
+    if (k !== laatste) {
+      laatste = k;
+      const naam = k === vandaag ? 'Vandaag' : k === gisteren ? 'Gisteren' : fmtDag.format(d);
+      html += '<h2>' + naam + '</h2>';
+    }
+    html += kaart(a, false);
+  }
+  doel.innerHTML = html;
+}
+
+document.getElementById('lijst').addEventListener('click', e => {
+  const a = e.target.closest('a.art'); if (!a) return;
+  gelezen.add(a.dataset.l); a.classList.add('gelezen');
+  localStorage.setItem('gelezen', JSON.stringify([...gelezen].slice(-2000)));
+});
+document.getElementById('zoek').addEventListener('input', teken);
+chips(); teken();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
