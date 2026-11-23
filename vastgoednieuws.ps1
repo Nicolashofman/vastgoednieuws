@@ -42,6 +42,12 @@ function Get-Tekst($s) {
     return (($t -replace '\s+', ' ').Trim())
 }
 
+# Betaalmuur: bronnen die (bijna) altijd betalend zijn worden nooit getoond. Pas gerust aan.
+$betaalBronnen = @('De Tijd', 'De Standaard', 'De Morgen', 'Knack', 'Financial Times', 'Het Financieele Dagblad', 'FD.nl', 'NRC', 'Wall Street Journal', 'Bloomberg')
+# Titels die zelf al aangeven dat het artikel betalend is
+$betaalTitel = '(?i)\[(premium|plus)\]|\(plus\)|\bpremium\b|\babonnee|betaalmuur|\| Mijn Geld'
+$betaaldTeller = 0
+
 # Regelgeving/beleid: woorden die daarop wijzen, en woorden die het Belgisch maken
 $wetWoorden = 'regelgeving|wetgeving|decreet|reglement|registratierecht|woonbonus|belasting|fiscal|btw|huurwet|huurindex|huurregel|epc|renovatieverplicht|omgevingsvergunning|bouwshift|betonstop|wooncode|subsidie|premie|hervorming|wetsontwerp|stedenbouw|woonzekerheid|nieuwe regels|verplichting|verbod|maatregel'
 $belgieWoorden = 'Belgi|Belg|Vlaams|Vlaanderen|Brussel|Walloni|federaal|federale|Vlaamse regering|De Wever|Diependaele|Vandenbroucke'
@@ -88,6 +94,9 @@ foreach ($b in $bronnen) {
             }
             try { $d = [DateTimeOffset]::Parse($datum, [Globalization.CultureInfo]::InvariantCulture) } catch { continue }
             if ($d -lt $grens -or -not $link -or -not $titel) { continue }
+            # Betalende artikels overslaan: vlag van de uitgever (HLN e.a.), betalende bron of betaal-titel
+            $betaald = ($i.OuterXml -match '<dpp:paid[^>]*>true<') -or ($titel -match $betaalTitel) -or [bool]($betaalBronnen | Where-Object { $bron -like "*$_*" })
+            if ($betaald) { $betaaldTeller++; continue }
             if ($b.filter -and ("$titel $samenvatting" -notmatch "$vastgoedWoorden|$wetWoorden")) { continue }
             $tekst = "$titel $samenvatting"
             if ($b.wetfeed -and -not (($tekst -match $vastgoedWoorden) -and ($tekst -match $wetWoorden))) { continue }
@@ -124,5 +133,6 @@ $uit = Join-Path $map 'index.html'
 [IO.File]::WriteAllText($uit, $html, (New-Object Text.UTF8Encoding($true)))
 
 $status | ForEach-Object { Write-Host $_ }
+Write-Host "Betalende artikels weggelaten: $betaaldTeller"
 Write-Host "Totaal: $(@($uniek).Count) unieke artikels -> $uit"
 if (-not $GeenBrowser) { Start-Process $uit }
